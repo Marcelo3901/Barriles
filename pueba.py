@@ -32,6 +32,14 @@ if os.path.exists("background.jpg"):
             color: #fff3aa !important;
             border-radius: 10px;
         }}
+        input[type="text"]::-webkit-outer-spin-button,
+        input[type="text"]::-webkit-inner-spin-button {{
+            -webkit-appearance: none;
+            margin: 0;
+        }}
+        input[type="text"] {{
+            -moz-appearance: textfield;
+        }}
         .stButton > button {{
             background-color: #55dcad !important;
             color: #fff3aa !important;
@@ -58,8 +66,7 @@ st.markdown("""
 # ------------------------------
 st.markdown("""<h2 style='color:#fff3aa;'>📋 Registro Movimiento Barriles</h2>""", unsafe_allow_html=True)
 
-codigo_barril = st.number_input("Código del barril (Debe tener 5 dígitos y empezar por 20, 30 o 58)", format="%05d", step=1)
-codigo_barril = str(int(codigo_barril)).zfill(5) if codigo_barril else ""
+codigo_barril = st.text_input("Código del barril (Debe tener 5 dígitos y empezar por 20, 30 o 58)", max_chars=5)
 
 codigo_valido = False
 if codigo_barril and len(codigo_barril) == 5 and codigo_barril[:2] in ["20", "30", "58"]:
