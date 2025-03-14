@@ -2,9 +2,17 @@ import streamlit as st
 import pandas as pd
 import base64
 import os
+import firebase_admin
+from firebase_admin import credentials, firestore
 
 # CONFIGURACIÓN DE LA PÁGINA
 st.set_page_config(page_title="Trazabilidad Barriles Castiza", layout="centered")
+
+# INICIALIZAR FIREBASE
+if not firebase_admin._apps:
+    cred = credentials.Certificate("firebase_credentials.json")
+    firebase_admin.initialize_app(cred)
+db = firestore.client()
 
 # AÑADIR IMAGEN DE FONDO PERSONALIZADA Y ESTILOS GENERALES
 if os.path.exists("background.jpg"):
@@ -61,9 +69,7 @@ st.markdown("""
     <h1 style='text-align:center; color:#fff3aa;'>🍺 Sistema de Trazabilidad de Barriles - Castiza</h1>
 """, unsafe_allow_html=True)
 
-# ------------------------------
 # FORMULARIO DE REGISTRO DE BARRILES
-# ------------------------------
 st.markdown("""<h2 style='color:#fff3aa;'>📋 Registro Movimiento Barriles</h2>""", unsafe_allow_html=True)
 
 codigo_barril = st.text_input("Código del barril (Debe tener 5 dígitos y empezar por 20, 30 o 58)", max_chars=5)
@@ -79,14 +85,13 @@ estilo_cerveza = st.selectbox("Estilo", estilos)
 
 estado_barril = st.selectbox("Estado del barril", ["Despachado", "Lavado en bodega", "Sucio", "En cuarto frío"])
 
-try:
-    df_clientes = pd.read_csv("clientes.csv")
-    lista_clientes = df_clientes.iloc[:, 0].dropna().astype(str).tolist()
-except:
-    lista_clientes = []
+# Obtener lista de clientes desde Firestore
+clientes_ref = db.collection("clientes")
+clientes_docs = clientes_ref.stream()
+lista_clientes = [doc.id for doc in clientes_docs]
 
 cliente = "Planta Castiza"
-if estado_barril == "Despachado":
+if estado_barril == "Despachado" and lista_clientes:
     cliente = st.selectbox("Cliente", lista_clientes)
 
 responsables = ["Pepe Vallejo", "Ligia Cajigas", "Erika Martinez", "Marcelo Martinez", "Operario 1", "Operario 2"]
@@ -96,7 +101,20 @@ observaciones = st.text_area("Observaciones")
 
 if st.button("Guardar Registro"):
     if codigo_valido:
-        st.success("✅ Registro procesado correctamente (almacenamiento desactivado en esta versión)")
+        try:
+            doc = {
+                "codigo_barril": codigo_barril,
+                "estilo": estilo_cerveza,
+                "estado": estado_barril,
+                "cliente": cliente,
+                "responsable": responsable,
+                "observaciones": observaciones,
+                "registro": firestore.SERVER_TIMESTAMP
+            }
+            db.collection("registros_barriles").add(doc)
+            st.success("✅ Registro guardado correctamente en Firestore")
+        except Exception as e:
+            st.error(f"❌ Error al guardar en Firestore: {e}")
     else:
         st.warning("⚠️ Código de barril inválido. Debe tener 5 dígitos y comenzar por 20, 30 o 58.")
 
@@ -109,16 +127,10 @@ direccion_cliente = st.text_input("Dirección (opcional)")
 if st.button("Agregar Cliente"):
     if nuevo_cliente.strip() != "":
         try:
-            df_nuevo = pd.DataFrame([[nuevo_cliente, direccion_cliente]])
-            if lista_clientes:
-                df_clientes = pd.concat([df_clientes, df_nuevo], ignore_index=True)
-            else:
-                df_clientes = df_nuevo
-            df_clientes.drop_duplicates(subset=0, keep="first", inplace=True)
-            df_clientes.to_csv("clientes.csv", index=False, header=False)
-            st.success("✅ Cliente agregado correctamente")
-        except:
-            st.error("❌ Error al guardar el nuevo cliente")
+            db.collection("clientes").document(nuevo_cliente.strip()).set({"direccion": direccion_cliente})
+            st.success("✅ Cliente agregado correctamente en Firestore")
+        except Exception as e:
+            st.error(f"❌ Error al guardar el cliente: {e}")
     else:
         st.warning("⚠️ El nombre del cliente no puede estar vacío")
 
@@ -129,8 +141,7 @@ if lista_clientes:
     cliente_eliminar = st.selectbox("Selecciona cliente a eliminar", lista_clientes)
     if st.button("Eliminar Cliente"):
         try:
-            df_clientes = df_clientes[df_clientes.iloc[:, 0] != cliente_eliminar]
-            df_clientes.to_csv("clientes.csv", index=False, header=False)
-            st.success("✅ Cliente eliminado correctamente")
-        except:
-            st.error("❌ Error al eliminar el cliente")
+            db.collection("clientes").document(cliente_eliminar).delete()
+            st.success("✅ Cliente eliminado correctamente de Firestore")
+        except Exception as e:
+            st.error(f"❌ Error al eliminar el cliente: {e}")
